@@ -34,6 +34,11 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
   const [geoCenter, setGeoCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [distanceByKey, setDistanceByKey] = useState<Record<string, number>>({});
   const [areaFiltered, setAreaFiltered] = useState<RecommendedHotel[] | null>(null);
+  const [filteredHotelsByApi, setFilteredHotelsByApi] = useState<RecommendedHotel[] | null>(null);
+  const [addressFilter, setAddressFilter] = useState('');
+  const [priceFilter, setPriceFilter] = useState<number | null>(null);
+  const [starRatingFilter, setStarRatingFilter] = useState<number | null>(null);
+  const [averageRatingFilter, setAverageRatingFilter] = useState<number | null>(null);
 
   // Filter hotels by selected city and price range
   const filteredHotels = useMemo(() => {
@@ -67,6 +72,28 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
     console.log('Filtered hotels:', filtered);
     return filtered;
   }, [hotels, selectedCity, selectedPriceRange]);
+
+  const applyFilters = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/filter', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          hotels: filteredHotels,
+          address: addressFilter,
+          price: priceFilter,
+          hotel_star_rating: starRatingFilter,
+          average_rating: averageRatingFilter,
+        }),
+      });
+      const data = await response.json();
+      setFilteredHotelsByApi(data);
+    } catch (error) {
+      console.error('Error filtering hotels:', error);
+    }
+  };
 
   // Area search: compute top-5 hotels using fuzzy match over address/city, otherwise geocode and distance
   useEffect(() => {
@@ -170,7 +197,7 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
 
   // Always show top 5 hotels based on the selected criteria
   const baseHotels = useMemo(() => {
-    const hotels = areaFiltered ?? filteredHotels;
+    const hotels = filteredHotelsByApi ?? areaFiltered ?? filteredHotels;
     // Sort by the current sort criteria
     return [...hotels].sort((a, b) => {
       switch (sortBy) {
@@ -346,6 +373,46 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
               {/* Address/Area helper note */}
               <div className="text-xs text-gray-500">
                 Tip: Type a landmark or area to see the 5 nearest hotels. Typos are handled automatically.
+              </div>
+
+              <div className="mt-6">
+                <h4 className="font-medium mb-3">Filter By</h4>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    placeholder="Address"
+                    value={addressFilter}
+                    onChange={(e) => setAddressFilter(e.target.value)}
+                    className="w-full p-2 border rounded"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Max Price"
+                    value={priceFilter || ''}
+                    onChange={(e) => setPriceFilter(Number(e.target.value))}
+                    className="w-full p-2 border rounded"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Star Rating"
+                    value={starRatingFilter || ''}
+                    onChange={(e) => setStarRatingFilter(Number(e.target.value))}
+                    className="w-full p-2 border rounded"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Min Average Rating"
+                    value={averageRatingFilter || ''}
+                    onChange={(e) => setAverageRatingFilter(Number(e.target.value))}
+                    className="w-full p-2 border rounded"
+                  />
+                  <button
+                    onClick={applyFilters}
+                    className="w-full px-4 py-2 bg-orange-500 text-white rounded-full shadow-md hover:bg-orange-600 transition-all"
+                  >
+                    Apply Filters
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>

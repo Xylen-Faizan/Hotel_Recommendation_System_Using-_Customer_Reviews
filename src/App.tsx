@@ -8,6 +8,7 @@ import { Header } from './components/Header';
 import { LoadingScreen } from './components/LoadingScreen';
 import { useAI } from './hooks/useAI';
 import { TravelerPersona } from './types/hotel';
+import Chatbot from './components/Chatbot';
 
 type AppState = 'loading' | 'welcome' | 'personalization' | 'recommendations';
 

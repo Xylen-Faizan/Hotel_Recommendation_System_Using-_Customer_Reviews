@@ -39,6 +39,8 @@ export interface Hotel {
 }
 
 export interface RecommendedHotel {
+  uniq_id: string;
+  property_name: string;
   name: string;
   city: string;
   image: string;

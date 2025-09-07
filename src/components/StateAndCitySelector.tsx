@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, ChevronRight, Search } from 'lucide-react';
 
+import { RecommendedHotel } from '../types/hotel';
+
 interface StateAndCitySelectorProps {
   onCitySelect: (city: string) => void;
+  onRecommendationsFetched: (recommendations: RecommendedHotel[]) => void;
 }
 
 const indianStatesAndCities = {
@@ -19,8 +22,10 @@ const indianStatesAndCities = {
   'Uttar Pradesh': ['Agra', 'Lucknow', 'Varanasi', 'Kanpur']
 };
 
-export const StateAndCitySelector: React.FC<StateAndCitySelectorProps> = ({ onCitySelect }) => {
+export const StateAndCitySelector: React.FC<StateAndCitySelectorProps> = ({ onCitySelect, onRecommendationsFetched }) => {
   const [selectedState, setSelectedState] = useState<string | null>(null);
+  const [selectedCity, setSelectedCity] = useState<string | null>(null);
+  const [selectedSegment, setSelectedSegment] = useState<string>('Couple');
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredStates = Object.keys(indianStatesAndCities).filter(state =>
@@ -39,7 +44,29 @@ export const StateAndCitySelector: React.FC<StateAndCitySelectorProps> = ({ onCi
   };
 
   const handleCitySelect = (city: string) => {
+    setSelectedCity(city);
     onCitySelect(city);
+  };
+
+  const handleSearch = async () => {
+    if (!selectedCity) return;
+
+    try {
+      const response = await fetch('http://localhost:8000/recommend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          city: selectedCity,
+          customer_segment: selectedSegment,
+        }),
+      });
+      const data = await response.json();
+      onRecommendationsFetched(data);
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+    }
   };
 
   const handleBack = () => {
@@ -143,6 +170,28 @@ export const StateAndCitySelector: React.FC<StateAndCitySelectorProps> = ({ onCi
                   </motion.button>
                 ))}
               </div>
+              {selectedCity && (
+                <div className="mt-8 text-center">
+                  <div>
+                    <select
+                      value={selectedSegment}
+                      onChange={(e) => setSelectedSegment(e.target.value)}
+                      className="p-2 border rounded"
+                    >
+                      <option value="Couple">Couple</option>
+                      <option value="Family">Family</option>
+                      <option value="Solo">Solo</option>
+                      <option value="Business">Business</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={handleSearch}
+                    className="mt-4 px-6 py-2 bg-orange-500 text-white rounded-full shadow-lg hover:bg-orange-600 transition-all duration-200"
+                  >
+                    Search for Hotels
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
