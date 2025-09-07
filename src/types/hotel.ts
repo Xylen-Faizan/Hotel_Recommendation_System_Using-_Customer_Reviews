@@ -1,3 +1,19 @@
+// Defines the structure for a single booking platform link
+export interface BookingLink {
+  url: string;
+  logo: string;
+}
+
+export interface PlatformRatings {
+  Google?: { rating: number; reviews_count: number };
+  Booking?: { rating: number; reviews_count: number };
+  MakeMyTrip?: { rating: number; reviews_count: number };
+  TripAdvisor?: { rating: number; reviews_count: number };
+  Agoda?: { rating: number; reviews_count: number };
+  Goibibo?: { rating: number; reviews_count: number };
+  Expedia?: { rating: number; reviews_count: number };
+}
+
 export interface Hotel {
   id: number;
   name: string;
@@ -35,6 +51,7 @@ export interface RecommendedHotel {
   review_summary?: string;
   facilities_brief?: string;
   average_platform_rating?: number; // averaged from platform_ratings
+  combinedScore?: number; // Combined score from sentiment and rating (0-1)
   features: {
     name: string;
     score: number;
@@ -49,16 +66,19 @@ export interface RecommendedHotel {
     Goibibo?: { rating: number; reviews_count: number };
     Expedia?: { rating: number; reviews_count: number };
   };
+  // MODIFIED: This property now uses the BookingLink interface
   booking_links: {
-    Google: string;
-    Booking: string;
-    MakeMyTrip: string;
-    TripAdvisor: string;
+    Google?: BookingLink;
+    Booking?: BookingLink;
+    MakeMyTrip?: BookingLink;
+    TripAdvisor?: BookingLink;
   };
   coordinates: {
     lat: number;
     lng: number;
   };
+  sentimentScore?: number;
+  normalizedRating?: number;
 }
 
 export type TravelerPersona = 'Family' | 'Couple' | 'Solo' | 'Business' | 'Luxury';

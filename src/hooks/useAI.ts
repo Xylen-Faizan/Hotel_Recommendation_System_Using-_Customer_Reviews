@@ -1,7 +1,128 @@
-import { useState, useEffect } from 'react';
-import { TravelerPersona, RecommendedHotel } from '../types/hotel';
-import { recommendationEngine } from '../services/RecommendationEngine';
-import recommendationsData from '../data/recommendations.json';
+import { useState, useEffect, useCallback } from 'react';
+import { TravelerPersona, RecommendedHotel, BookingLink } from '../types/hotel';
+import { recommendationEngine, AggregatedHotel } from '../services/RecommendationEngine';
+import rawRecommendationsData from '../data/recommendations.json';
+
+const logoUrls = {
+  Google: 'https://www.google.com/favicon.ico',
+  Booking: 'https://cdn.iconscout.com/icon/free-png-256/free-bookingcom-5041350-4209454.png',
+  MakeMyTrip: 'https://cdn-icons-png.flaticon.com/512/732/732228.png',
+  TripAdvisor: 'https://static.tacdn.com/favicon.ico'
+};
+
+const recommendationsData = Object.values(rawRecommendationsData as Record<string, any>).flat() as any[];
+
+const getStaticRecommendations = (city?: string): RecommendedHotel[] => {
+  const allRecommendations = (recommendationsData as any[])
+    .filter(h => !city || (h.city && h.city.toLowerCase() === city.toLowerCase()))
+    .slice(0, 10);
+
+  return allRecommendations.map(hotel => ({
+    name: hotel.name || 'Unknown Hotel',
+    city: hotel.city || 'Unknown City',
+    image: hotel.image || `https://source.unsplash.com/800x600/?hotel,${encodeURIComponent(hotel.city || 'hotel')}`,
+    overall_score: hotel.overall_score || 0,
+    price_range: hotel.price_range || 0,
+    address: hotel.address || '',
+    hotel_star_rating: hotel.hotel_star_rating || 0,
+    room_type: hotel.room_type || '',
+    review_summary: hotel.review_summary || '',
+    facilities_brief: hotel.facilities_brief || '',
+    average_platform_rating: hotel.average_platform_rating || 0,
+    sentimentScore: (hotel as any).sentimentScore || 0.5,
+    normalizedRating: (hotel as any).normalizedRating || 0.5,
+    features: hotel.features || [],
+    badges: hotel.badges || [],
+    platform_ratings: hotel.platform_ratings || {},
+    booking_links: {
+      Google: {
+        url: `https://www.google.com/travel/search?q=${encodeURIComponent(hotel.name + ' ' + (hotel.city || ''))}`,
+        logo: logoUrls.Google
+      },
+      Booking: {
+        url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(hotel.name + ' ' + (hotel.city || ''))}`,
+        logo: logoUrls.Booking
+      },
+      MakeMyTrip: {
+        url: `https://www.makemytrip.com/hotels/hotel-listing/?searchText=${encodeURIComponent(hotel.name + ' ' + (hotel.city || ''))}`,
+        logo: logoUrls.MakeMyTrip
+      },
+      TripAdvisor: {
+        url: `https://www.tripadvisor.in/Search?q=${encodeURIComponent(hotel.name + ' ' + (hotel.city || ''))}`,
+        logo: logoUrls.TripAdvisor
+      }
+    },
+    coordinates: hotel.coordinates || { lat: 0, lng: 0 }
+  }));
+};
+
+
+import { PipelineType, pipeline as transformersPipeline } from '@xenova/transformers';
+
+class SentimentPipeline {
+    static task: PipelineType = 'text-classification';
+    static model = 'distilbert-base-uncased-finetuned-sst-2-english';
+    private static instance: any = null;
+    static maxLength = 512;
+  
+    static async getInstance(progress_callback?: (progress: any) => void): Promise<{
+      (text: string): Promise<Array<{label: string, score: number}>>;
+    }> {
+      if (!this.instance) {
+        try {
+          this.instance = await transformersPipeline(this.task, this.model, { 
+            progress_callback,
+          });
+        } catch (error) {
+          console.error('Failed to load sentiment model, using fallback:', error);
+          this.instance = async () => [
+            { label: 'POSITIVE', score: 0.85 }
+          ];
+        }
+      }
+      return this.instance;
+    }
+  
+    static async analyzeDocument(hotel: AggregatedHotel) {
+        const documentText = [
+            `Hotel: ${hotel.name}`,
+            `Location: ${hotel.address || hotel.city || ''}`,
+            `Description: ${hotel.reviewSummary || ''}`,
+            `Features: ${hotel.tags ? hotel.tags.join(', ') : ''}`,
+            ...hotel.reviews,
+          ].filter(Boolean).join('. ');
+      
+          try {
+            const pipeline = await this.getInstance();
+            const truncatedText = documentText.substring(0, this.maxLength);
+            const result = await pipeline(truncatedText);
+            const sentimentResult = result[0];
+      
+            const sentimentScore = sentimentResult.label === 'POSITIVE' 
+              ? sentimentResult.score 
+              : 1 - sentimentResult.score;
+            
+            const normalizedRating = hotel.averageScore ? Math.min(1, hotel.averageScore / 5) : 0.5;
+            const combinedScore = (sentimentScore + normalizedRating) / 2;
+      
+            return {
+              sentimentScore,
+              normalizedRating,
+              combinedScore,
+            };
+          } catch (error) {
+            console.error('Error in sentiment analysis for', hotel.name, error);
+            const fallbackScore = 0.7;
+            const normalizedRating = hotel.averageScore ? Math.min(1, hotel.averageScore / 5) : 0.5;
+            return {
+              sentimentScore: fallbackScore,
+              normalizedRating,
+              combinedScore: (fallbackScore + normalizedRating) / 2,
+            };
+          }
+    }
+}
+
 
 export const useAI = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -10,14 +131,12 @@ export const useAI = () => {
   const [isEngineReady, setIsEngineReady] = useState(false);
 
   useEffect(() => {
-    // Initialize the recommendation engine
     const initEngine = async () => {
       try {
         await recommendationEngine.initialize();
         setIsEngineReady(true);
       } catch (error) {
         console.error('Failed to initialize AI engine:', error);
-        // Fallback to static data if AI engine fails
         setIsEngineReady(false);
       }
     };
@@ -25,7 +144,7 @@ export const useAI = () => {
     initEngine();
   }, []);
 
-  const analyzePreferences = async (
+  const analyzePreferences = useCallback(async (
     persona: TravelerPersona,
     city: string,
     preferences: string[] = [],
@@ -33,188 +152,123 @@ export const useAI = () => {
       priceMin?: number;
       priceMax?: number;
       starRatings?: number[];
-      avgRatingMin?: number;
-      avgRatingMax?: number;
-      area?: string;
-      extraRequirements?: string;
     }
-  ) => {
+  ): Promise<RecommendedHotel[]> => {
     setIsAnalyzing(true);
     
     try {
-      if (isEngineReady) {
-        // Use AI recommendation engine
-        const result = await recommendationEngine.generateRecommendations(persona, city, preferences, options);
-
-        // Normalize platform ratings keys from engine (e.g., 'Booking.com') to app keys
-        const normalizePlatforms = (platforms: Record<string, { rating: number; reviews_count: number }>) => {
-          const get = (k: string) => platforms?.[k];
-          return {
-            Google: get('Google') || undefined,
-            Booking: get('Booking.com') || get('Booking') || undefined,
-            MakeMyTrip: get('MakeMyTrip') || undefined,
-            TripAdvisor: get('TripAdvisor') || undefined,
-            Agoda: get('Agoda') || undefined,
-            Goibibo: get('Goibibo') || undefined,
-            Expedia: get('Expedia') || undefined,
-          };
-        };
-
-        // Helper to compute average of platform ratings
-        const avgPlatform = (platforms: Record<string, { rating: number; reviews_count: number }>) => {
-          const vals = Object.values(platforms || {})
-            .map(v => v?.rating)
-            .filter((v): v is number => typeof v === 'number');
-          return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : undefined;
-        };
-
-        // Convert to RecommendedHotel format
-        const aiRecommendations: RecommendedHotel[] = result.hotels.map(hotel => ({
-          name: hotel.name,
-          city: hotel.city,
-          // Use Unsplash Source for a deterministic, no-key image by city/topic
-          image: `https://source.unsplash.com/800x600/?hotel,${encodeURIComponent(hotel.city)}`,
-          overall_score: hotel.confidenceScore,
-          price_range: hotel.priceRange,
-          address: hotel.address,
-          hotel_star_rating: hotel.starRating,
-          room_type: hotel.roomType,
-          review_summary: hotel.reviewSummary,
-          facilities_brief: hotel.facilitiesBrief,
-          features: [
-            { name: 'cleanliness', score: Math.round(hotel.averageScore * 10) },
-            { name: 'location', score: Math.round((hotel.averageScore + Math.random() * 2 - 1) * 10) },
-            { name: 'service', score: Math.round((hotel.averageScore + Math.random() * 1.5 - 0.75) * 10) },
-            { name: 'value', score: Math.round((hotel.averageScore + Math.random() * 1 - 0.5) * 10) },
-            { name: 'facilities', score: Math.round((hotel.averageScore + Math.random() * 1.2 - 0.6) * 10) }
-          ],
-          badges: hotel.tags.slice(0, 3),
-          platform_ratings: normalizePlatforms(hotel.platformRatings || {}),
-          average_platform_rating: avgPlatform(normalizePlatforms(hotel.platformRatings || {})),
-          booking_links: {
-            Google: `https://www.google.com/travel/hotels/entity?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-            Booking: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-            MakeMyTrip: `https://www.makemytrip.com/hotels/hotel-listing/?searchText=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-            TripAdvisor: `https://www.tripadvisor.in/Search?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`
-          },
-          coordinates: hotel.coordinates
-        }));
-
-        setRecommendations(aiRecommendations);
-        setInsights(result.insights);
-      } else {
-        // Fallback to static data
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const personaRecommendations = recommendationsData[persona] || [];
-        const filteredRecommendations = city && city !== 'all'
-          ? personaRecommendations.filter(hotel => 
-              hotel.city.toLowerCase() === city.toLowerCase()
-            )
-          : personaRecommendations;
-
-        // Normalize static data platform_ratings (numbers) to objects
-        const normalized: RecommendedHotel[] = filteredRecommendations.map((h: any) => ({
-          ...h,
-          image: `https://source.unsplash.com/800x600/?hotel,${encodeURIComponent(h.city || '')}`,
-          platform_ratings: {
-            Google: typeof h.platform_ratings?.Google === 'number' ? { rating: h.platform_ratings.Google, reviews_count: 0 } : h.platform_ratings?.Google,
-            Booking: typeof h.platform_ratings?.Booking === 'number' ? { rating: h.platform_ratings.Booking, reviews_count: 0 } : h.platform_ratings?.Booking,
-            MakeMyTrip: typeof h.platform_ratings?.MakeMyTrip === 'number' ? { rating: h.platform_ratings.MakeMyTrip, reviews_count: 0 } : h.platform_ratings?.MakeMyTrip,
-            TripAdvisor: typeof h.platform_ratings?.TripAdvisor === 'number' ? { rating: h.platform_ratings.TripAdvisor, reviews_count: 0 } : h.platform_ratings?.TripAdvisor,
-            Agoda: typeof h.platform_ratings?.Agoda === 'number' ? { rating: h.platform_ratings.Agoda, reviews_count: 0 } : h.platform_ratings?.Agoda,
-            Goibibo: typeof h.platform_ratings?.Goibibo === 'number' ? { rating: h.platform_ratings.Goibibo, reviews_count: 0 } : h.platform_ratings?.Goibibo,
-            Expedia: typeof h.platform_ratings?.Expedia === 'number' ? { rating: h.platform_ratings.Expedia, reviews_count: 0 } : h.platform_ratings?.Expedia,
-          },
-          average_platform_rating: (() => {
-            const vals = Object.values(h.platform_ratings || {})
-              .map((v: any) => (typeof v === 'number' ? v : v?.rating))
-              .filter((v: any): v is number => typeof v === 'number');
-            return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : undefined;
-          })()
-        }));
-
-        setRecommendations(normalized);
+      if (!isEngineReady) {
+        const staticData = getStaticRecommendations(city);
+        setRecommendations(staticData);
+        return staticData;
       }
-    } catch (error) {
-      console.error('Error generating recommendations:', error);
       
-      // Fallback to static data on error
-      const personaRecommendations = recommendationsData[persona] || [];
-      const filteredRecommendations = city && city !== 'all'
-        ? personaRecommendations.filter(hotel => 
-            hotel.city.toLowerCase() === city.toLowerCase()
-          )
-        : personaRecommendations;
+      const result = await recommendationEngine.generateRecommendations(
+        persona, 
+        city, 
+        preferences, 
+        options
+      );
 
-      const normalized: RecommendedHotel[] = filteredRecommendations.map((h: any) => ({
-        ...h,
-        image: `https://source.unsplash.com/800x600/?hotel,${encodeURIComponent(h.city || '')}`,
-        platform_ratings: {
-          Google: typeof h.platform_ratings?.Google === 'number' ? { rating: h.platform_ratings.Google, reviews_count: 0 } : h.platform_ratings?.Google,
-          Booking: typeof h.platform_ratings?.Booking === 'number' ? { rating: h.platform_ratings.Booking, reviews_count: 0 } : h.platform_ratings?.Booking,
-          MakeMyTrip: typeof h.platform_ratings?.MakeMyTrip === 'number' ? { rating: h.platform_ratings.MakeMyTrip, reviews_count: 0 } : h.platform_ratings?.MakeMyTrip,
-          TripAdvisor: typeof h.platform_ratings?.TripAdvisor === 'number' ? { rating: h.platform_ratings.TripAdvisor, reviews_count: 0 } : h.platform_ratings?.TripAdvisor,
-          Agoda: typeof h.platform_ratings?.Agoda === 'number' ? { rating: h.platform_ratings.Agoda, reviews_count: 0 } : h.platform_ratings?.Agoda,
-          Goibibo: typeof h.platform_ratings?.Goibibo === 'number' ? { rating: h.platform_ratings.Goibibo, reviews_count: 0 } : h.platform_ratings?.Goibibo,
-          Expedia: typeof h.platform_ratings?.Expedia === 'number' ? { rating: h.platform_ratings.Expedia, reviews_count: 0 } : h.platform_ratings?.Expedia,
-        },
-        average_platform_rating: (() => {
-          const vals = Object.values(h.platform_ratings || {})
-            .map((v: any) => (typeof v === 'number' ? v : v?.rating))
-            .filter((v: any): v is number => typeof v === 'number');
-          return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : undefined;
-        })()
-      }));
+      if (!result || !result.hotels || result.hotels.length === 0) {
+        const staticData = getStaticRecommendations(city);
+        setRecommendations(staticData);
+        return staticData;
+      }
 
-      setRecommendations(normalized);
+      const processedHotels = await Promise.all(
+        result.hotels.map(async (hotel) => {
+          const analysis = await SentimentPipeline.analyzeDocument(hotel);
+
+          // Generate booking links from platform ratings
+          const finalBookingLinks: { [key: string]: BookingLink } = {};
+          const platforms = ['Google', 'Booking', 'MakeMyTrip', 'TripAdvisor'];
+
+          platforms.forEach(platform => {
+            const logo = logoUrls[platform as keyof typeof logoUrls];
+            let finalUrl = '';
+
+            // If the URL is still missing, create a generic search URL as a fallback
+            if (!finalUrl) {
+              const query = encodeURIComponent(`${hotel.name} ${hotel.city}`);
+              switch (platform) {
+                case 'Google':
+                  finalUrl = `https://www.google.com/travel/search?q=${query}`;
+                  break;
+                case 'Booking':
+                  finalUrl = `https://www.booking.com/searchresults.html?ss=${query}`;
+                  break;
+                case 'MakeMyTrip':
+                  finalUrl = `https://www.makemytrip.com/hotels/hotel-listing/?searchText=${query}`;
+                  break;
+                case 'TripAdvisor':
+                  finalUrl = `https://www.tripadvisor.com/Search?q=${query}`;
+                  break;
+              }
+            }
+            
+            // Add the link to our final object
+            if (finalUrl && logo) {
+              finalBookingLinks[platform] = { url: finalUrl, logo };
+            }
+          });
+          // --- END OF FIX ---
+
+          // Generate a more reliable hotel image URL using the hotel name and city
+          const hotelNameSlug = hotel.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+          const citySlug = hotel.city ? `,${hotel.city.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}` : '';
+          const imageUrl = `https://source.unsplash.com/800x600/?hotel,${hotelNameSlug}${citySlug}`;
+          
+          const recommendedHotel: RecommendedHotel = {
+            name: hotel.name,
+            city: hotel.city,
+            image: imageUrl,
+            overall_score: Math.round(analysis.combinedScore * 100),
+            price_range: hotel.priceRange || 0,
+            address: hotel.address,
+            hotel_star_rating: hotel.starRating || 0,
+            room_type: hotel.roomType || 'Standard',
+            review_summary: hotel.reviewSummary || (hotel.reviews?.[0] || 'No reviews available'),
+            facilities_brief: hotel.tags ? hotel.tags.slice(0, 5).join(', ') : '',
+            average_platform_rating: hotel.averageScore || 0,
+            sentimentScore: analysis.sentimentScore,
+            normalizedRating: analysis.normalizedRating,
+            combinedScore: analysis.combinedScore,
+            features: [
+              { name: 'Cleanliness', score: Math.round((hotel.averageScore || 0) * 20) },
+              { name: 'Location', score: Math.round((hotel.averageScore || 0) * 20) },
+              { name: 'Service', score: Math.round((hotel.averageScore || 0) * 20) },
+              { name: 'Value', score: Math.round((hotel.averageScore || 0) * 20) }
+            ],
+            badges: [
+              ...(analysis.sentimentScore > 0.75 ? ['Highly Rated'] : []),
+              ...(hotel.starRating && hotel.starRating >= 4 ? ['Luxury'] : []),
+            ],
+            platform_ratings: hotel.platformRatings || {},
+            coordinates: hotel.coordinates || { lat: 0, lng: 0 },
+            booking_links: finalBookingLinks
+          };
+
+          return recommendedHotel;
+        })
+      );
+      
+      const finalRecommendations = processedHotels
+        .filter((h): h is RecommendedHotel => h !== null)
+        .sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
+
+      setRecommendations(finalRecommendations);
+      setInsights(result.insights);
+      return finalRecommendations;
+    } catch (error) {
+      console.error('Error in analyzePreferences:', error);
+      const fallbackData = getStaticRecommendations(city);
+      setRecommendations(fallbackData);
+      return fallbackData;
     } finally {
       setIsAnalyzing(false);
     }
-    
-    return recommendations;
-  };
-
-  const generateInsights = (persona: TravelerPersona) => {
-    if (insights) {
-      return {
-        keyFactors: insights.topFeatures,
-        sentiment: `${insights.totalAnalyzed} hotels analyzed with ${insights.averageRating} average rating`,
-        recommendation: `Based on ${insights.cityStats.hotelCount} hotels in ${insights.cityStats.name}`
-      };
-    }
-
-    // Fallback insights
-    const fallbackInsights = {
-      Family: {
-        keyFactors: ['Safety', 'Kid-friendly amenities', 'Space'],
-        sentiment: 'Families prioritize safety and entertainment for children',
-        recommendation: 'Look for hotels with pools, play areas, and family rooms'
-      },
-      Business: {
-        keyFactors: ['WiFi quality', 'Meeting facilities', 'Location'],
-        sentiment: 'Business travelers value efficiency and connectivity',
-        recommendation: 'Choose hotels near business districts with work amenities'
-      },
-      Luxury: {
-        keyFactors: ['Service quality', 'Amenities', 'Exclusivity'],
-        sentiment: 'Luxury travelers expect exceptional service and unique experiences',
-        recommendation: 'Premium hotels with spa, fine dining, and personalized service'
-      },
-      Solo: {
-        keyFactors: ['Safety', 'Location', 'Value'],
-        sentiment: 'Solo travelers prioritize safety and central locations',
-        recommendation: 'Well-located hotels with good security and social spaces'
-      },
-      Couple: {
-        keyFactors: ['Romance', 'Privacy', 'Ambiance'],
-        sentiment: 'Couples seek romantic settings and intimate experiences',
-        recommendation: 'Hotels with romantic dining, spa services, and scenic views'
-      }
-    };
-
-    return fallbackInsights[persona];
-  };
+  }, [isEngineReady]);
 
   return {
     isAnalyzing,
@@ -222,6 +276,5 @@ export const useAI = () => {
     insights,
     isEngineReady,
     analyzePreferences,
-    generateInsights
   };
 };

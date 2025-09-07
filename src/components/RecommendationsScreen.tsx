@@ -37,23 +37,34 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
 
   // Filter hotels by selected city and price range
   const filteredHotels = useMemo(() => {
-    let filtered = hotels;
+    console.log('Original hotels:', hotels);
+    let filtered = [...hotels]; // Create a copy to avoid mutating the original array
 
     // Filter by city if selected
     if (selectedCity && selectedCity !== 'all') {
-      filtered = filtered.filter(hotel => 
-        hotel.city.toLowerCase() === selectedCity.toLowerCase()
-      );
+      const cityLower = selectedCity.toLowerCase();
+      filtered = filtered.filter(hotel => {
+        const matches = hotel.city.toLowerCase() === cityLower;
+        if (!matches) {
+          console.log(`Filtered out hotel ${hotel.name} (${hotel.city}) - city doesn't match ${selectedCity}`);
+        }
+        return matches;
+      });
     }
 
     // Filter by price range
     if (selectedPriceRange) {
       filtered = filtered.filter(hotel => {
         const price = hotel.price_range || 2500;
-        return price >= selectedPriceRange.min && price <= selectedPriceRange.max;
+        const inRange = price >= selectedPriceRange.min && price <= selectedPriceRange.max;
+        if (!inRange) {
+          console.log(`Filtered out hotel ${hotel.name} - price ${price} not in range [${selectedPriceRange.min}, ${selectedPriceRange.max}]`);
+        }
+        return inRange;
       });
     }
 
+    console.log('Filtered hotels:', filtered);
     return filtered;
   }, [hotels, selectedCity, selectedPriceRange]);
 
@@ -68,6 +79,8 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
         setAreaFiltered(null);
         return;
       }
+      
+      console.log('Starting area search with query:', areaQuery);
       setSearching(true);
       try {
         // Fuzzy match within filteredHotels in the selected city
@@ -86,10 +99,21 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
           }
         }
 
+        console.log('Trying fuzzy match with address pool:', addressPool);
         const matches = getCloseMatches(areaQuery, addressPool, 10, 0.6);
+        console.log('Fuzzy matches found:', matches);
+        
         if (matches.length > 0) {
           const uniqKeys = Array.from(new Set(matches.map((m) => addressToHotelKey.get(m)).filter(Boolean))) as string[];
-          const matchedHotels = uniqKeys.map((k) => keyToHotel.get(k as string)!).filter(Boolean).slice(0, 5);
+          console.log('Unique hotel keys from matches:', uniqKeys);
+          
+          const matchedHotels = uniqKeys
+            .map((k) => keyToHotel.get(k as string))
+            .filter((h): h is RecommendedHotel => h !== undefined)
+            .slice(0, 5);
+            
+          console.log('Matched hotels after filtering:', matchedHotels);
+          
           if (!cancel) {
             setAreaFiltered(matchedHotels);
             setSearching(false);
@@ -144,51 +168,33 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
     setAreaInput(areaQuery);
   }, [areaQuery]);
 
-  // Sort hotels (falls back to filteredHotels when no area search)
-  const baseHotels = areaFiltered ?? filteredHotels;
-  const sortedHotels = useMemo(() => {
-    return [...baseHotels].sort((a, b) => {
+  // Always show top 5 hotels based on the selected criteria
+  const baseHotels = useMemo(() => {
+    const hotels = areaFiltered ?? filteredHotels;
+    // Sort by the current sort criteria
+    return [...hotels].sort((a, b) => {
       switch (sortBy) {
         case 'ai_score':
-          return b.overall_score - a.overall_score;
+          return (b.overall_score || 0) - (a.overall_score || 0);
         case 'price':
-          return (a.price_range || 2500) - (b.price_range || 2500);
+          return (a.price_range || 0) - (b.price_range || 0);
         case 'rating':
-          const ratingsA = Object.values(a.platform_ratings).map(pr => pr?.rating).filter((v): v is number => typeof v === 'number');
-          const ratingsB = Object.values(b.platform_ratings).map(pr => pr?.rating).filter((v): v is number => typeof v === 'number');
-          const avgRatingA = ratingsA.length ? ratingsA.reduce((s, v) => s + v, 0) / ratingsA.length : 0;
-          const avgRatingB = ratingsB.length ? ratingsB.reduce((s, v) => s + v, 0) / ratingsB.length : 0;
-          return avgRatingB - avgRatingA;
-        case 'avg_customer': {
-          const avgA = (a.average_platform_rating ?? (() => {
-            const vals = Object.values(a.platform_ratings).map(pr => pr?.rating).filter((v): v is number => typeof v === 'number');
-            return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-          })());
-          const avgB = (b.average_platform_rating ?? (() => {
-            const vals = Object.values(b.platform_ratings).map(pr => pr?.rating).filter((v): v is number => typeof v === 'number');
-            return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-          })());
-          return (avgB || 0) - (avgA || 0);
-        }
+          return (b.average_platform_rating || 0) - (a.average_platform_rating || 0);
         case 'star':
           return (b.hotel_star_rating || 0) - (a.hotel_star_rating || 0);
-        case 'address_az': {
-          const aAddr = (a.address || a.city || a.name || '').toString();
-          const bAddr = (b.address || b.city || b.name || '').toString();
-          return aAddr.localeCompare(bAddr);
-        }
-        case 'distance': {
-          const keyA = `${a.name}-${a.city}`;
-          const keyB = `${b.name}-${b.city}`;
-          const da = distanceByKey[keyA] ?? Number.POSITIVE_INFINITY;
-          const db = distanceByKey[keyB] ?? Number.POSITIVE_INFINITY;
-          return da - db;
-        }
         default:
           return 0;
       }
-    });
-  }, [baseHotels, sortBy, distanceByKey]);
+    }).slice(0, 5); // Always take top 5
+  }, [filteredHotels, areaFiltered, sortBy]);
+  
+  // Debug logging
+  console.log('Filtered hotels count:', filteredHotels.length);
+  console.log('Area filtered count:', areaFiltered?.length || 0);
+  console.log('Base hotels count:', baseHotels.length);
+  console.log('Sample hotel:', baseHotels[0]);
+  // Use the pre-sorted and limited baseHotels
+  const sortedHotels = baseHotels;
 
   const getPersonaIcon = (persona: TravelerPersona) => {
     switch (persona) {

@@ -124,7 +124,7 @@ export const AIAnalysisScreen: React.FC<AIAnalysisScreenProps> = ({
   }, [onComplete]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center px-4 relative overflow-hidden">
+    <div className="min-h-screen w-full bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 flex items-center justify-center relative overflow-hidden">
       {/* Animated Background */}
       <div className="absolute inset-0">
         {[...Array(30)].map((_, i) => (
@@ -149,7 +149,7 @@ export const AIAnalysisScreen: React.FC<AIAnalysisScreenProps> = ({
         ))}
       </div>
 
-      <div className="relative z-10 max-w-4xl w-full">
+      <div className="relative z-10 w-full px-4">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}

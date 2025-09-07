@@ -409,10 +409,10 @@ class RecommendationEngine {
       });
     }
 
-    // Sort by final score and take top 5
+    // Sort by final score and take top 20 for further processing
     const topHotels = scoredHotels
       .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, 5);
+      .slice(0, 20);
 
     // Generate insights
     const insights = this.generateInsights(candidateHotels, city);

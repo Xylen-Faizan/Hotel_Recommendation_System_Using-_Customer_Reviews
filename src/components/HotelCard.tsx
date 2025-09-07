@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Star, MapPin, Heart, IndianRupee } from 'lucide-react';
 import { RecommendedHotel } from '../types/hotel';
-import { BookingPlatforms } from './BookingPlatforms';
+import BookingPlatforms from './BookingPlatforms';
 import { getPriceRangeInfo, formatPrice } from '../utils/priceUtils';
 import { getCachedHotelImage, getCachedUrl } from '../services/serpApi';
 
@@ -192,6 +192,52 @@ export const HotelCard: React.FC<HotelCardProps> = ({
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Platform Ratings */}
+        <div className="mb-3">
+          <div className="grid grid-cols-2 gap-2">
+            {hotel.platform_ratings && 'Google' in hotel.platform_ratings && (
+              <div className="flex items-center">
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4 mr-1" />
+                <div className="flex items-center mr-1">
+                  {[...Array(5)].map((_, i) => {
+                    const rating = hotel.platform_ratings?.Google?.rating || 0;
+                    return (
+                      <Star 
+                        key={i} 
+                        className={`w-3 h-3 ${i < Math.round(rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-xs text-gray-600">
+                  {hotel.platform_ratings.Google?.rating?.toFixed(1) || 'N/A'}
+                  {hotel.platform_ratings.Google?.reviews_count !== undefined && ` (${hotel.platform_ratings.Google.reviews_count})`}
+                </span>
+              </div>
+            )}
+            {hotel.platform_ratings && 'Booking' in hotel.platform_ratings && (
+              <div className="flex items-center">
+                <img src="https://cdn.iconscout.com/icon/free/png-256/bookingcom-5041304-4203328.png" alt="Booking.com" className="w-4 h-4 mr-1" />
+                <div className="flex items-center mr-1">
+                  {[...Array(5)].map((_, i) => {
+                    const rating = hotel.platform_ratings?.Booking?.rating || 0;
+                    return (
+                      <Star 
+                        key={i} 
+                        className={`w-3 h-3 ${i < Math.round(rating) ? 'text-blue-400 fill-current' : 'text-gray-300'}`} 
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-xs text-gray-600">
+                  {hotel.platform_ratings.Booking?.rating?.toFixed(1) || 'N/A'}
+                  {hotel.platform_ratings.Booking?.reviews_count !== undefined && ` (${hotel.platform_ratings.Booking.reviews_count})`}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Facilities brief */}

@@ -1,89 +1,77 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { ExternalLink, Star } from 'lucide-react';
 import { RecommendedHotel } from '../types/hotel';
 
+// Define a type for the component's props
 interface BookingPlatformsProps {
   hotel: RecommendedHotel;
 }
 
-export const BookingPlatforms: React.FC<BookingPlatformsProps> = ({ hotel }) => {
-  const platforms = [
-    {
-      name: 'Google',
-      rating: hotel.platform_ratings.Google?.rating,
-      count: hotel.platform_ratings.Google?.reviews_count,
-      url: `https://www.google.com/travel/hotels/entity?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-      color: 'bg-blue-500 hover:bg-blue-600',
-      logo: '🔍'
-    },
-    {
-      name: 'Booking.com',
-      rating: hotel.platform_ratings.Booking?.rating,
-      count: hotel.platform_ratings.Booking?.reviews_count,
-      url: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-      color: 'bg-blue-600 hover:bg-blue-700',
-      logo: '🏨'
-    },
-    {
-      name: 'MakeMyTrip',
-      rating: hotel.platform_ratings.MakeMyTrip?.rating,
-      count: hotel.platform_ratings.MakeMyTrip?.reviews_count,
-      url: `https://www.makemytrip.com/hotels/hotel-listing/?searchText=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-      color: 'bg-red-500 hover:bg-red-600',
-      logo: '✈️'
-    },
-    {
-      name: 'TripAdvisor',
-      rating: hotel.platform_ratings.TripAdvisor?.rating,
-      count: hotel.platform_ratings.TripAdvisor?.reviews_count,
-      url: `https://www.tripadvisor.in/Search?q=${encodeURIComponent(hotel.name + ' ' + hotel.city)}`,
-      color: 'bg-green-500 hover:bg-green-600',
-      logo: '🦉'
-    }
-  ];
+// A helper to get brand-specific colors for the buttons
+const getPlatformColors = (platform: string) => {
+  // Normalize platform names for consistent styling
+  const lowerPlatform = platform.toLowerCase();
+  if (lowerPlatform.includes('google')) {
+    return 'bg-blue-600 hover:bg-blue-700';
+  }
+  if (lowerPlatform.includes('booking')) {
+    return 'bg-blue-800 hover:bg-blue-900';
+  }
+  if (lowerPlatform.includes('makemytrip')) {
+    return 'bg-red-500 hover:bg-red-600';
+  }
+  if (lowerPlatform.includes('tripadvisor')) {
+    return 'bg-green-500 hover:bg-green-600';
+  }
+  return 'bg-gray-500 hover:bg-gray-600';
+};
 
-  const handlePlatformClick = (url: string) => {
-    // Open in new tab with specific hotel search
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
+
+const BookingPlatforms = ({ hotel }: BookingPlatformsProps) => {
+  const hasLinks = hotel.booking_links && Object.keys(hotel.booking_links).length > 0;
+
+  // --- THIS IS THE FIX ---
+  // This block now renders a clearly visible message when no links are found,
+  // instead of disappearing completely.
+  if (!hasLinks) {
+    return (
+      <div className="pt-3 border-t border-gray-100">
+         <h4 className="font-semibold text-sm text-gray-800 mb-2">Compare & Book</h4>
+         <div className="text-center text-sm text-gray-500 p-2 bg-gray-50 rounded-md">
+            No booking links available for this hotel.
+         </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-3">
-      <h4 className="font-semibold text-gray-800 mb-3">Compare & Book</h4>
+    <div className="pt-3 border-t border-gray-100">
+      <h4 className="font-semibold text-sm text-gray-800 mb-2">Compare & Book</h4>
       <div className="grid grid-cols-2 gap-2">
-        {platforms.map((platform, index) => (
-          <motion.button
-            key={platform.name}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => handlePlatformClick(platform.url)}
-            className={`${platform.color} text-white p-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg group`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{platform.logo}</span>
-                <div className="text-left">
-                  <div className="text-sm font-medium">{platform.name}</div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      <Star className="w-3 h-3 fill-current" />
-                      <span className="text-xs">{platform.rating?.toFixed(1) ?? '—'}</span>
-                    </div>
-                    {typeof platform.count === 'number' && (
-                      <span className="text-[10px] opacity-90">{platform.count.toLocaleString()} reviews</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <ExternalLink className="w-4 h-4 opacity-70 group-hover:opacity-100 transition-opacity" />
-            </div>
-          </motion.button>
-        ))}
+        {Object.entries(hotel.booking_links).map(([platform, linkData]) => {
+          // Ensure linkData and its properties exist before rendering
+          if (!linkData || !linkData.url || !linkData.logo) {
+            return null; // Skip rendering for any invalid entries
+          }
+
+          return (
+            <a
+              key={platform}
+              href={linkData.url} 
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center justify-center p-2 rounded-lg text-white text-sm font-bold transition-transform transform hover:scale-105 ${getPlatformColors(platform)}`}
+            >
+              <img 
+                src={linkData.logo} 
+                alt={`${platform} logo`} 
+                className="w-4 h-4 mr-2"
+              />
+              <span>{platform}</span>
+            </a>
+          );
+        })}
       </div>
     </div>
   );
 };
+
+export default BookingPlatforms;

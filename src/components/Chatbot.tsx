@@ -173,6 +173,10 @@ const Chatbot: React.FC<ChatbotProps> = ({ persona, city }) => {
     const wantsRecs = /hotel|recommend|budget|₹|rs|star|near|airport|city center|beach|pool|breakfast|wifi|wi-fi/.test(lower);
 
     try {
+      if (!wantsRecs) {
+        addMessage('assistant', "I am a hotel recommendation AI agent. I can only answer questions related to hotels. Please ask me something about hotels.");
+        return;
+      }
       // Model response in parallel with recs if applicable
       const history = messages.concat({ id: 'temp', role: 'user', content });
 
