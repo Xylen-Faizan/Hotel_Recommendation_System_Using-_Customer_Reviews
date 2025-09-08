@@ -8,6 +8,7 @@ import { AIInsights } from './AIInsights';
 import { PriceFilter } from './PriceFilter';
 import type { PriceRange } from '../utils/priceUtils';
 import Chatbot from './Chatbot';
+import SortBy from './SortBy';
 import { geocodeNominatim, getCloseMatches, haversineDistance } from '../utils/geo';
 
 interface RecommendationsScreenProps {
@@ -23,7 +24,8 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
   selectedCity,
   onBack
 }) => {
-  const [sortBy, setSortBy] = useState<'ai_score' | 'price' | 'rating' | 'star' | 'avg_customer' | 'distance' | 'address_az'>('ai_score');
+  const [sortBy, setSortBy] = useState<'ai_score' | 'price' | 'star'>('ai_score');
+  const [starRatingFilter, setStarRatingFilter] = useState<number | null>(null);
   const [showMap, setShowMap] = useState(false);
   const [selectedPriceRange, setSelectedPriceRange] = useState<PriceRange | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -37,7 +39,6 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
   const [filteredHotelsByApi, setFilteredHotelsByApi] = useState<RecommendedHotel[] | null>(null);
   const [addressFilter, setAddressFilter] = useState('');
   const [priceFilter, setPriceFilter] = useState<number | null>(null);
-  const [starRatingFilter, setStarRatingFilter] = useState<number | null>(null);
   const [averageRatingFilter, setAverageRatingFilter] = useState<number | null>(null);
 
   // Parse reviews for hotels
@@ -66,7 +67,7 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
     });
   }, [hotels]);
 
-  // Filter hotels by selected city and price range
+  // Filter and sort hotels by selected criteria
   const filteredHotels = useMemo(() => {
     console.log('Original hotels:', hotelsWithParsedReviews);
     let filtered = [...hotelsWithParsedReviews]; // Use the hotels with parsed reviews
@@ -82,6 +83,20 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
         return matches;
       });
     }
+
+    // Sort hotels based on selected criteria and return top 5
+    filtered = filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'ai_score':
+          return (b.overall_score || 0) - (a.overall_score || 0);
+        case 'price':
+          return (a.price_range || 0) - (b.price_range || 0);
+        case 'star':
+          return (b.hotel_star_rating || 0) - (a.hotel_star_rating || 0);
+        default:
+          return 0;
+      }
+    }).slice(0, 5); // Only take top 5 hotels after sorting
 
     // Filter by price range
     if (selectedPriceRange) {
@@ -137,7 +152,7 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          hotels: filteredHotels,
+          hotels: filteredHotels.slice(0, 5), // Only send top 5 hotels for filtering
           address: addressFilter,
           price: priceFilter,
           hotel_star_rating: starRatingFilter,
@@ -145,7 +160,8 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
         }),
       });
       const data = await response.json();
-      setFilteredHotelsByApi(data);
+      // Ensure we only show top 5 filtered results
+      setFilteredHotelsByApi(data.slice(0, 5));
     } catch (error) {
       console.error('Error filtering hotels:', error);
     }
@@ -251,25 +267,29 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
     setAreaInput(areaQuery);
   }, [areaQuery]);
 
-  // Always show top 5 hotels based on the selected criteria
+  // Filter and sort hotels based on selected criteria
   const baseHotels = useMemo(() => {
-    const hotels = filteredHotelsByApi ?? areaFiltered ?? filteredHotels;
-    // Sort by the current sort criteria
+    let hotels = filteredHotelsByApi ?? areaFiltered ?? filteredHotels;
+
+    // Filter by star rating if selected
+    if (sortBy === 'star' && starRatingFilter) {
+      hotels = hotels.filter(hotel => hotel.hotel_star_rating === starRatingFilter);
+    }
+
+    // Sort hotels based on criteria
     return [...hotels].sort((a, b) => {
       switch (sortBy) {
         case 'ai_score':
           return (b.overall_score || 0) - (a.overall_score || 0);
         case 'price':
           return (a.price_range || 0) - (b.price_range || 0);
-        case 'rating':
-          return (b.average_platform_rating || 0) - (a.average_platform_rating || 0);
         case 'star':
           return (b.hotel_star_rating || 0) - (a.hotel_star_rating || 0);
         default:
           return 0;
       }
-    }).slice(0, 5); // Always take top 5
-  }, [filteredHotels, areaFiltered, sortBy]);
+    });
+  }, [filteredHotels, areaFiltered, filteredHotelsByApi, sortBy, starRatingFilter]);
   
   // Debug logging
   console.log('Filtered hotels count:', filteredHotels.length);
@@ -402,29 +422,17 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
               {/* Sort Options */}
               <div className="mb-6">
                 <h4 className="font-medium mb-3">Sort By</h4>
-                <div className="space-y-2">
-                  {[
-                    { value: 'ai_score', label: 'AI Score' },
-                    { value: 'price', label: 'Price (Low to High)' },
-                    { value: 'rating', label: 'Customer Rating (legacy)' },
-                    { value: 'avg_customer', label: 'Average Customer Rating' },
-                    { value: 'star', label: 'Hotel Star Rating' },
-                    { value: 'address_az', label: 'Address (A–Z)' },
-                    ...(areaFiltered || geoCenter ? [{ value: 'distance', label: 'Distance (Nearest)' }] as const : []),
-                  ].map((option) => (
-                    <button
-                      key={option.value}
-                      onClick={() => setSortBy(option.value as any)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        sortBy === option.value
-                          ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                          : 'hover:bg-gray-100'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <SortBy 
+                  value={sortBy} 
+                  onChange={(value, starRating) => {
+                    setSortBy(value);
+                    if (value === 'star' && starRating) {
+                      setStarRatingFilter(starRating);
+                    } else {
+                      setStarRatingFilter(null);
+                    }
+                  }} 
+                />
               </div>
               {/* Address/Area helper note */}
               <div className="text-xs text-gray-500">
@@ -478,7 +486,7 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
       {/* Main Content */}
       <div className={`transition-all duration-300 ${showFilters ? 'ml-80' : ''}`}>
         {showMap ? (
-          <InteractiveMap hotels={sortedHotels} />
+          <InteractiveMap hotels={(filteredHotelsByApi || areaFiltered || filteredHotels).slice(0, 5)} />
         ) : (
           <div className="max-w-7xl mx-auto px-4 py-6">
             {/* AI Insights */}
@@ -496,28 +504,30 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
               </div>
             )}
 
-            {/* Hotels Grid */}
+            {/* Top 5 Hotels Grid */}
             <motion.div 
               layout
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
               <AnimatePresence>
-                {sortedHotels.map((hotel, index) => (
-                  <motion.div
-                    key={hotel.name}
-                    layout
-                    initial={{ opacity: 0, y: 50 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -50 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <HotelCard hotel={hotel} index={index} />
-                  </motion.div>
-                ))}
+                {(filteredHotelsByApi || areaFiltered || filteredHotels)
+                  .slice(0, 5) // Ensure only top 5 hotels are displayed
+                  .map((hotel, index) => (
+                    <motion.div
+                      key={hotel.name}
+                      layout
+                      initial={{ opacity: 0, y: 50 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -50 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <HotelCard hotel={hotel} index={index} />
+                    </motion.div>
+                  ))}
               </AnimatePresence>
             </motion.div>
 
-            {sortedHotels.length === 0 && (
+            {(filteredHotelsByApi || areaFiltered || filteredHotels).length === 0 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
