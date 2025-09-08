@@ -235,10 +235,9 @@ export const useAI = () => {
             normalizedRating: analysis.normalizedRating,
             combinedScore: analysis.combinedScore,
             features: [
-              { name: 'Cleanliness', score: Math.round((hotel.averageScore || 0) * 20) },
-              { name: 'Location', score: Math.round((hotel.averageScore || 0) * 20) },
-              { name: 'Service', score: Math.round((hotel.averageScore || 0) * 20) },
-              { name: 'Value', score: Math.round((hotel.averageScore || 0) * 20) }
+              { name: 'Cleanliness', score: Math.round((hotel.featureScores?.cleanliness || 0) * 100) },
+              { name: 'Location', score: Math.round((hotel.featureScores?.location || 0) * 100) },
+              { name: 'Service', score: Math.round((hotel.featureScores?.customer_service || 0) * 100) }
             ],
             badges: [
               ...(analysis.sentimentScore > 0.75 ? ['Highly Rated'] : []),

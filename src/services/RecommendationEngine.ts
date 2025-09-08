@@ -50,6 +50,11 @@ export interface AggregatedHotel {
   roomType?: string;
   facilitiesBrief?: string;
   reviewSummary?: string;
+  featureScores: {
+    cleanliness: number;
+    location: number;
+    customer_service: number;
+  };
 }
 
 export interface RecommendationResult {
@@ -185,7 +190,12 @@ class RecommendationEngine {
         starRating,
         roomType: row.room_type || undefined,
         facilitiesBrief,
-        reviewSummary
+        reviewSummary,
+        featureScores: {
+          cleanliness: avgScore / 5,
+          location: avgScore / 5,
+          customer_service: avgScore / 5
+        }
       };
     });
   }
