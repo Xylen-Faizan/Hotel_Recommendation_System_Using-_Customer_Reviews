@@ -6,6 +6,37 @@ import BookingPlatforms from './BookingPlatforms';
 import { getPriceRangeInfo, formatPrice } from '../utils/priceUtils';
 import { getCachedHotelImage, getCachedUrl } from '../services/serpApi';
 
+const PLATFORM_DATA = {
+  booking: {
+    name: 'Booking.com',
+    icon: '/platform-logos/booking.svg'
+  },
+  makemytrip: {
+    name: 'MakeMyTrip',
+    icon: '/platform-logos/makemytrip.svg'
+  },
+  tripadvisor: {
+    name: 'TripAdvisor',
+    icon: '/platform-logos/tripadvisor.svg'
+  },
+  google: {
+    name: 'Google',
+    icon: '/platform-logos/google.svg'
+  },
+  agoda: {
+    name: 'Agoda',
+    icon: '/platform-logos/agoda.svg'
+  },
+  goibibo: {
+    name: 'Goibibo',
+    icon: '/platform-logos/goibibo.svg'
+  },
+  expedia: {
+    name: 'Expedia',
+    icon: '/platform-logos/expedia.svg'
+  }
+};
+
 interface HotelCardProps {
   hotel: RecommendedHotel;
   index: number;
@@ -17,8 +48,10 @@ export const HotelCard: React.FC<HotelCardProps> = ({
   hotel, 
   index, 
   onFavorite,
-  isFavorite = false 
+  isFavorite = false
 }) => {
+  console.log('HotelCard platform_ratings:', JSON.stringify(hotel.platform_ratings, null, 2));
+  console.log('HotelCard booking_links:', JSON.stringify(hotel.booking_links, null, 2));
   const hotelKey = `${hotel.name}-${hotel.city}`;
   const [imgSrc, setImgSrc] = React.useState<string>(
     hotel.image || getCachedUrl(hotelKey) || '/placeholder-hotel.svg'
@@ -197,46 +230,38 @@ export const HotelCard: React.FC<HotelCardProps> = ({
         {/* Platform Ratings */}
         <div className="mb-3">
           <div className="grid grid-cols-2 gap-2">
-            {hotel.platform_ratings && 'Google' in hotel.platform_ratings && (
-              <div className="flex items-center">
-                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4 mr-1" />
-                <div className="flex items-center mr-1">
-                  {[...Array(5)].map((_, i) => {
-                    const rating = hotel.platform_ratings?.Google?.rating || 0;
-                    return (
+            {hotel.platform_ratings && Object.entries(hotel.platform_ratings).map(([platform, data]) => {
+              if (!data) return null;
+              
+              const platformLower = platform.toLowerCase();
+              const platformKey = Object.keys(PLATFORM_DATA).find(key => 
+                platformLower.includes(key.toLowerCase())
+              );
+              
+              if (!platformKey) return null;
+              
+              const platformInfo = PLATFORM_DATA[platformKey];
+              const rating = typeof data === 'number' ? data : data.rating || 0;
+              const reviews_count = typeof data === 'number' ? 0 : data.reviews_count || 0;
+              
+              return (
+                <div key={platform} className="flex items-center mb-2">
+                  <img src={platformInfo.icon} alt={platformInfo.name} className="w-8 h-8 mr-2" />
+                  <div className="flex items-center mr-1">
+                    {[...Array(5)].map((_, i) => (
                       <Star 
                         key={i} 
                         className={`w-3 h-3 ${i < Math.round(rating) ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} 
                       />
-                    );
-                  })}
+                    ))}
+                  </div>
+                  <span className="text-xs text-gray-600">
+                    {rating.toFixed(1)}
+                    {reviews_count > 0 && ` (${reviews_count.toLocaleString()})`}
+                  </span>
                 </div>
-                <span className="text-xs text-gray-600">
-                  {hotel.platform_ratings.Google?.rating?.toFixed(1) || 'N/A'}
-                  {hotel.platform_ratings.Google?.reviews_count !== undefined && ` (${hotel.platform_ratings.Google.reviews_count})`}
-                </span>
-              </div>
-            )}
-            {hotel.platform_ratings && 'Booking' in hotel.platform_ratings && (
-              <div className="flex items-center">
-                <img src="https://cdn.iconscout.com/icon/free/png-256/bookingcom-5041304-4203328.png" alt="Booking.com" className="w-4 h-4 mr-1" />
-                <div className="flex items-center mr-1">
-                  {[...Array(5)].map((_, i) => {
-                    const rating = hotel.platform_ratings?.Booking?.rating || 0;
-                    return (
-                      <Star 
-                        key={i} 
-                        className={`w-3 h-3 ${i < Math.round(rating) ? 'text-blue-400 fill-current' : 'text-gray-300'}`} 
-                      />
-                    );
-                  })}
-                </div>
-                <span className="text-xs text-gray-600">
-                  {hotel.platform_ratings.Booking?.rating?.toFixed(1) || 'N/A'}
-                  {hotel.platform_ratings.Booking?.reviews_count !== undefined && ` (${hotel.platform_ratings.Booking.reviews_count})`}
-                </span>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
 
@@ -250,7 +275,10 @@ export const HotelCard: React.FC<HotelCardProps> = ({
 
         {/* Booking Platforms */}
         <div className="pt-3 border-t border-gray-100">
-          <BookingPlatforms hotel={hotel} />
+          <BookingPlatforms 
+            reviews={hotel.platform_ratings || {}} 
+            bookingLinks={hotel.booking_links || {}}
+          />
         </div>
       </div>
     </motion.div>

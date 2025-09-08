@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">
+  <text x="10" y="50" font-family="Arial" font-size="40" font-weight="bold" fill="#0066CC">make</text>
+  <rect x="110" y="10" width="80" height="80" rx="15" fill="#FF0000"/>
+  <text x="120" y="65" font-family="Arial" font-size="45" font-weight="bold" fill="white">my</text>
+  <text x="200" y="50" font-family="Arial" font-size="40" font-weight="bold" fill="#0066CC">trip</text>
+</svg>

@@ -170,28 +170,6 @@ export const StateAndCitySelector: React.FC<StateAndCitySelectorProps> = ({ onCi
                   </motion.button>
                 ))}
               </div>
-              {selectedCity && (
-                <div className="mt-8 text-center">
-                  <div>
-                    <select
-                      value={selectedSegment}
-                      onChange={(e) => setSelectedSegment(e.target.value)}
-                      className="p-2 border rounded"
-                    >
-                      <option value="Couple">Couple</option>
-                      <option value="Family">Family</option>
-                      <option value="Solo">Solo</option>
-                      <option value="Business">Business</option>
-                    </select>
-                  </div>
-                  <button
-                    onClick={handleSearch}
-                    className="mt-4 px-6 py-2 bg-orange-500 text-white rounded-full shadow-lg hover:bg-orange-600 transition-all duration-200"
-                  >
-                    Search for Hotels
-                  </button>
-                </div>
-              )}
             </motion.div>
           )}
         </AnimatePresence>

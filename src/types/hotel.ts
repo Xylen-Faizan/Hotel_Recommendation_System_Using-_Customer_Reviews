@@ -38,6 +38,11 @@ export interface Hotel {
   };
 }
 
+export interface PlatformReview {
+  rating: number;
+  reviews_count: number;
+}
+
 export interface RecommendedHotel {
   uniq_id: string;
   property_name: string;
@@ -46,6 +51,8 @@ export interface RecommendedHotel {
   image: string;
   overall_score: number;
   price_range: number; // Price in INR per night
+  reviews_from_different_sites?: string | Record<string, PlatformReview>;
+  parsedReviews?: Record<string, PlatformReview>;
   // New optional descriptive fields
   address?: string;
   hotel_star_rating?: number; // e.g., 2, 3, 4, 5

@@ -40,10 +40,36 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
   const [starRatingFilter, setStarRatingFilter] = useState<number | null>(null);
   const [averageRatingFilter, setAverageRatingFilter] = useState<number | null>(null);
 
+  // Parse reviews for hotels
+  const hotelsWithParsedReviews = useMemo(() => {
+    return hotels.map(hotel => {
+      console.log('Processing hotel:', hotel.name);
+      console.log('Raw platform_ratings:', hotel.platform_ratings);
+      
+      // Ensure platform_ratings is properly formatted
+      const platformRatings = hotel.platform_ratings || {};
+      const formattedRatings: Record<string, { rating: number; reviews_count: number }> = {};
+      
+      Object.entries(platformRatings).forEach(([platform, data]: [string, any]) => {
+        if (data && typeof data === 'object') {
+          formattedRatings[platform] = {
+            rating: Number(data.rating) || 0,
+            reviews_count: Number(data.reviews_count) || 0
+          };
+        }
+      });
+      
+      return {
+        ...hotel,
+        platform_ratings: formattedRatings
+      };
+    });
+  }, [hotels]);
+
   // Filter hotels by selected city and price range
   const filteredHotels = useMemo(() => {
-    console.log('Original hotels:', hotels);
-    let filtered = [...hotels]; // Create a copy to avoid mutating the original array
+    console.log('Original hotels:', hotelsWithParsedReviews);
+    let filtered = [...hotelsWithParsedReviews]; // Use the hotels with parsed reviews
 
     // Filter by city if selected
     if (selectedCity && selectedCity !== 'all') {
@@ -69,7 +95,37 @@ const RecommendationsScreen: React.FC<RecommendationsScreenProps> = ({
       });
     }
 
-    console.log('Filtered hotels:', filtered);
+    // Ensure platform_ratings are correctly set with parsed reviews
+    filtered = filtered.map(hotel => {
+      // Start with existing platform_ratings or an empty object
+      let platformRatings = hotel.platform_ratings || {};
+      
+      // Log the data for debugging
+      console.log(`Processing hotel: ${hotel.name}`);
+      console.log('Platform ratings:', platformRatings);
+
+      // Ensure each platform rating has the correct structure
+      const formattedRatings: Record<string, { rating: number; reviews_count: number }> = {};
+      
+      // Process each platform's ratings
+      Object.entries(platformRatings).forEach(([platform, data]: [string, any]) => {
+        if (data && typeof data === 'object') {
+          formattedRatings[platform] = {
+            rating: Number(data.rating) || 0,
+            reviews_count: Number(data.reviews_count) || 0
+          };
+        }
+      });
+      
+      console.log(`Formatted platform ratings for ${hotel.name}:`, formattedRatings);
+      
+      return {
+        ...hotel,
+        platform_ratings: formattedRatings
+      };
+    });
+
+    console.log('Filtered hotels with parsed reviews:', filtered);
     return filtered;
   }, [hotels, selectedCity, selectedPriceRange]);
 
